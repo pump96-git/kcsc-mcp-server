@@ -2,7 +2,7 @@ import os
 import re
 import json
 import requests
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Image
 
 mcp = FastMCP("KCSC Standards MCP")
 
@@ -256,6 +256,103 @@ def get_kcsc_section(
     except Exception as e:
 
         return f"오류 발생: {e}"
+        
+@mcp.tool()
+def get_kcsc_formula_images(
+    doc_type: str,
+    code_number: str,
+    section_label: str
+):
+    """
+    KCSC 기준의 지정 조항에서 수식 이미지를 추출하여
+    MCP 이미지 콘텐츠로 반환합니다. 원본 이미지를 그대로 전달하며
+    OCR이나 수식 추정은 수행하지 않습니다.
+    """
+    import base64
+
+    try:
+        data = _fetch_kcsc_data(doc_type, code_number)
+        items = _find_items(data)
+
+        if not items:
+            return ["오류: KCSC 기준 항목을 찾지 못했습니다."]
+
+        target = section_label.strip()
+        start_index = None
+
+        for i, item in enumerate(items):
+            label = str(item.get("label", "")).strip()
+            contents = str(item.get("contents", ""))
+            plain = re.sub(r"<[^>]+>", "", contents).strip()
+
+            if (
+                label == target
+                or plain.startswith(target + " ")
+                or re.search(rf"(?<!\d){re.escape(target)}\s", plain)
+            ):
+                start_index = i
+                break
+
+        if start_index is None:
+            return [f"오류: 조항 '{target}'을 찾지 못했습니다."]
+
+        selected = [items[start_index]]
+
+        for item in items[start_index + 1:]:
+            if _is_section_title(item):
+                break
+            selected.append(item)
+
+        results = [
+            f"KCSC 원본 이미지: {doc_type} {code_number}, "
+            f"조항 {target}"
+        ]
+        count = 0
+
+        pattern = (
+            r"data:(image/[A-Za-z0-9.+-]+);base64,"
+            r"([A-Za-z0-9+/=]+)"
+        )
+
+        for item in selected:
+            contents = str(item.get("contents", ""))
+            sort_num = item.get("sort", "unknown")
+
+            for idx, match in enumerate(re.finditer(pattern, contents)):
+                mime_type = match.group(1).lower()
+
+                try:
+                    image_bytes = base64.b64decode(
+                        match.group(2),
+                        validate=True
+                    )
+                except Exception:
+                    continue
+
+                image_format = mime_type.split("/", 1)[1]
+
+                results.append(
+                    f"항목 sort={sort_num}, 이미지 {idx + 1}, "
+                    f"{mime_type}, {len(image_bytes)} bytes"
+                )
+                results.append(
+                    Image(data=image_bytes, format=image_format)
+                )
+                count += 1
+
+        if count == 0:
+            return [
+                f"조항 {target}에서 수식 이미지를 찾지 못했습니다."
+            ]
+
+        results.insert(1, f"추출 이미지 수: {count}")
+        return results
+
+    except requests.RequestException as e:
+        return [f"KCSC API 호출 오류: {e}"]
+    except Exception as e:
+        return [f"오류 발생: {e}"]
+
 
 
 if __name__ == "__main__":
