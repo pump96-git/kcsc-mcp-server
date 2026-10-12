@@ -2,8 +2,8 @@ import os
 import re
 import json
 import requests
-from fastmcp import FastMCP, Image
-
+from fastmcp import FastMCP
+from fastmcp.utilities.types import Image
 mcp = FastMCP("KCSC Standards MCP")
 
 
