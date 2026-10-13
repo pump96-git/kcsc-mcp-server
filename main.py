@@ -2,6 +2,8 @@ import os
 import re
 import json
 import requests
+from io import BytesIO
+from PIL import Image as PILImage
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 mcp = FastMCP("KCSC Standards MCP")
@@ -329,16 +331,52 @@ def get_kcsc_formula_images(
                 except Exception:
                     continue
 
-                image_format = mime_type.split("/", 1)[1]
+               
+image_format = mime_type.split("/", 1)[1]
 
-                results.append(
-                    f"항목 sort={sort_num}, 이미지 {idx + 1}, "
-                    f"{mime_type}, {len(image_bytes)} bytes"
-                )
-                results.append(
-                    Image(data=image_bytes, format=image_format)
-                )
-                count += 1
+# 원본 이미지의 비율을 유지하면서 큰 이미지만 축소
+try:
+    with PILImage.open(BytesIO(image_bytes)) as img:
+        original_width, original_height = img.size
+        max_width = 700
+
+        if original_width > max_width:
+            new_height = round(
+                original_height * max_width / original_width
+            )
+            img = img.resize(
+                (max_width, new_height),
+                PILImage.Resampling.LANCZOS
+            )
+
+            output = BytesIO()
+
+            # PNG/GIF 등 원본 형식에 맞춰 저장
+            save_format = img.format or image_format.upper()
+
+            if save_format == "GIF":
+                save_format = "PNG"
+            elif save_format not in ("PNG", "JPEG", "WEBP"):
+                save_format = "PNG"
+
+            img.save(output, format=save_format)
+            image_bytes = output.getvalue()
+            image_format = save_format.lower()
+
+except Exception as e:
+    results.append(
+        f"이미지 크기 조절 실패, 원본 사용: {e}"
+    )
+
+results.append(
+    f"항목 sort={sort_num}, 이미지 {idx + 1}, "
+    f"{image_format}, {len(image_bytes)} bytes"
+)
+results.append(
+    Image(data=image_bytes, format=image_format)
+)
+count += 1
+
 
         if count == 0:
             return [
