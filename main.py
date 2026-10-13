@@ -260,17 +260,16 @@ def get_kcsc_section(
         return f"오류 발생: {e}"
         
 @mcp.tool()
+
 def get_kcsc_formula_images(
     doc_type: str,
     code_number: str,
     section_label: str
 ):
-    """
-    KCSC 기준의 지정 조항에서 수식 이미지를 추출하여
-    MCP 이미지 콘텐츠로 반환합니다. 원본 이미지를 그대로 전달하며
-    OCR이나 수식 추정은 수행하지 않습니다.
-    """
+    """KCSC 원본 수식 이미지를 추출해 MCP 이미지로 반환합니다."""
     import base64
+    from io import BytesIO
+    from PIL import Image as PILImage
 
     try:
         data = _fetch_kcsc_data(doc_type, code_number)
@@ -290,7 +289,10 @@ def get_kcsc_formula_images(
             if (
                 label == target
                 or plain.startswith(target + " ")
-                or re.search(rf"(?<!\d){re.escape(target)}\s", plain)
+                or re.search(
+                    rf"(?<!\d){re.escape(target)}\s",
+                    plain
+                )
             ):
                 start_index = i
                 break
@@ -306,8 +308,7 @@ def get_kcsc_formula_images(
             selected.append(item)
 
         results = [
-            f"KCSC 원본 이미지: {doc_type} {code_number}, "
-            f"조항 {target}"
+            f"KCSC 원본 이미지: {doc_type} {code_number}, 조항 {target}"
         ]
         count = 0
 
@@ -331,52 +332,44 @@ def get_kcsc_formula_images(
                 except Exception:
                     continue
 
-               
-image_format = mime_type.split("/", 1)[1]
+                image_format = mime_type.split("/", 1)[1]
 
-# 원본 이미지의 비율을 유지하면서 큰 이미지만 축소
-try:
-    with PILImage.open(BytesIO(image_bytes)) as img:
-        original_width, original_height = img.size
-        max_width = 700
+                try:
+                    with PILImage.open(BytesIO(image_bytes)) as img:
+                        img.load()
+                        original_width, original_height = img.size
 
-        if original_width > max_width:
-            new_height = round(
-                original_height * max_width / original_width
-            )
-            img = img.resize(
-                (max_width, new_height),
-                PILImage.Resampling.LANCZOS
-            )
+                        if original_width > 700:
+                            new_height = max(
+                                1,
+                                round(
+                                    original_height * 700 / original_width
+                                )
+                            )
+                            resized = img.resize(
+                                (700, new_height),
+                                PILImage.Resampling.LANCZOS
+                            )
 
-            output = BytesIO()
+                            output = BytesIO()
+                            resized.save(output, format="PNG")
+                            image_bytes = output.getvalue()
+                            image_format = "png"
 
-            # PNG/GIF 등 원본 형식에 맞춰 저장
-            save_format = img.format or image_format.upper()
+                except Exception as e:
+                    results.append(
+                        f"이미지 축소 실패(sort={sort_num}): {e}. "
+                        "원본 이미지를 사용합니다."
+                    )
 
-            if save_format == "GIF":
-                save_format = "PNG"
-            elif save_format not in ("PNG", "JPEG", "WEBP"):
-                save_format = "PNG"
-
-            img.save(output, format=save_format)
-            image_bytes = output.getvalue()
-            image_format = save_format.lower()
-
-except Exception as e:
-    results.append(
-        f"이미지 크기 조절 실패, 원본 사용: {e}"
-    )
-
-results.append(
-    f"항목 sort={sort_num}, 이미지 {idx + 1}, "
-    f"{image_format}, {len(image_bytes)} bytes"
-)
-results.append(
-    Image(data=image_bytes, format=image_format)
-)
-count += 1
-
+                results.append(
+                    f"항목 sort={sort_num}, 이미지 {idx + 1}, "
+                    f"{image_format}, {len(image_bytes)} bytes"
+                )
+                results.append(
+                    Image(data=image_bytes, format=image_format)
+                )
+                count += 1
 
         if count == 0:
             return [
