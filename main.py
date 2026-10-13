@@ -338,6 +338,9 @@ def get_kcsc_formula_images(
                     with PILImage.open(BytesIO(image_bytes)) as img:
                         img.load()
                         original_width, original_height = img.size
+                        results.append(
+    f"원본 이미지 크기: {original_width}x{original_height}px"
+)
 
                         if original_width > 700:
                             new_height = max(
