@@ -258,6 +258,64 @@ def get_kcsc_section(
     except Exception as e:
 
         return f"오류 발생: {e}"
+
+
+@mcp.tool()
+def get_kcsc_formula_latex(
+    doc_type: str,
+    code_number: str,
+    section_label: str
+) -> str:
+    """
+    KCSC 기준의 주요 수식을 LaTeX 텍스트로 제공합니다.
+    현재 검증된 수식만 반환합니다.
+    """
+
+    formulas = {
+        ("KDS", "142052", "4.1.2"): {
+            "식 (4.1-1)": (
+                r"l_{db} = "
+                r"\frac{0.6 d_b f_y}"
+                r"{\lambda \sqrt{f_{ck}}}"
+            ),
+            "식 (4.1-2)": (
+                r"l_d = "
+                r"\frac{0.90 d_b f_y}"
+                r"{\lambda \sqrt{f_{ck}}}"
+                r"\frac{\alpha \beta \gamma}"
+                r"{\left(\frac{c+K_{tr}}{d_b}\right)}"
+            )
+        }
+    }
+
+    key = (
+        doc_type.upper().strip(),
+        code_number.strip(),
+        section_label.strip()
+    )
+
+    result = formulas.get(key)
+
+    if result is None:
+        return (
+            f"{doc_type} {code_number} "
+            f"{section_label}: 등록된 검증 수식이 없습니다."
+        )
+
+    return json.dumps(
+        {
+            "doc_type": key[0],
+            "code_number": key[1],
+            "section_label": key[2],
+            "format": "LaTeX",
+            "formulas": result
+        },
+        ensure_ascii=False,
+        indent=2
+    )
+
+
+
         
 @mcp.tool()
 
